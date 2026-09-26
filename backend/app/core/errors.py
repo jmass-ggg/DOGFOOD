@@ -7,11 +7,24 @@ This module provides:
 """
 
 from typing import Any, Dict, Optional
+import logging
 
 from fastapi import Request, status
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
 from app.core.request_id import get_request_id
+
+
+def error_response(request: Request, status_code: int, code: str, message: str, details: Any = None) -> JSONResponse:
+    request_id = request.scope.get("request_id") or get_request_id()
+    return JSONResponse(
+        status_code=status_code,
+        headers={"X-Request-ID": request_id} if request_id else None,
+        content={"error": {"code": code, "message": message, "details": details if details is not None else {}},
+                 "request_id": request_id},
+    )
 
 
 class ApplicationError(Exception):
@@ -68,17 +81,7 @@ async def application_error_handler(
     Returns:
         JSONResponse with structured error information
     """
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": {
-                "code": exc.code,
-                "message": exc.message,
-                "details": exc.details,
-            },
-            "request_id": get_request_id(),
-        },
-    )
+    return error_response(request, exc.status_code, exc.code, exc.message, exc.details)
 
 
 async def generic_exception_handler(
@@ -97,14 +100,20 @@ async def generic_exception_handler(
     Returns:
         JSONResponse with generic error information and 500 status
     """
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "An unexpected error occurred",
-                "details": {},
-            },
-            "request_id": get_request_id(),
-        },
-    )
+    logging.getLogger("dogfood.errors").error("Unhandled exception type: %s", type(exc).__name__)
+    return error_response(request, status.HTTP_500_INTERNAL_SERVER_ERROR,
+                          "INTERNAL_ERROR", "An unexpected error occurred")
+
+
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    message = exc.detail if isinstance(exc.detail, str) else "HTTP error"
+    response = error_response(request, exc.status_code, "HTTP_ERROR", message)
+    if exc.headers:
+        response.headers.update(exc.headers)
+    return response
+
+
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # Input values in validation errors can contain credentials.
+    return error_response(request, status.HTTP_422_UNPROCESSABLE_ENTITY,
+                          "VALIDATION_ERROR", "Request validation failed")

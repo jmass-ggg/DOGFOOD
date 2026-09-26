@@ -32,7 +32,7 @@ cp .env.example .env
 ```
 
 Edit `.env` and set:
-- `DATABASE_URL`: Your PostgreSQL connection string
+- `DATABASE_URL`: Your `postgresql+psycopg://` connection string. Replace any older `postgresql+asyncpg://` value.
 - `FRONTEND_URL`: Frontend application URL (default: http://localhost:3000)
 - `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
@@ -87,7 +87,7 @@ Expected response:
 
 ### Test Database Setup
 
-Property-based tests require a test database. Set it up once before running tests:
+Database tests require a dedicated database named `testdb`. Set it up once before running tests:
 
 ```bash
 sudo -u postgres ./setup_test_db.sh
@@ -97,6 +97,8 @@ This creates:
 - Test database: `testdb`
 - Test user: `test` (password: `test`)
 - Connection string: `postgresql+psycopg://test:test@localhost:5432/testdb`
+
+Tests ignore your application `DATABASE_URL` and use `TEST_DATABASE_URL` when set. The URL must use the psycopg driver and a database named `testdb`.
 
 ### Running Tests
 

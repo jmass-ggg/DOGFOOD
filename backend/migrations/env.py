@@ -17,14 +17,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set the sqlalchemy.url from our application settings
-# Convert async URL to sync URL for Alembic migrations
+# psycopg 3 provides a synchronous connection for Alembic from the same URL.
 settings = get_settings()
-database_url = settings.database_url
-# Replace asyncpg with psycopg for Alembic migrations (sync driver)
-if "postgresql+asyncpg://" in database_url:
-    database_url = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
-config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 # Add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata
@@ -72,13 +67,16 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+    try:
+        with connectable.connect() as connection:
+            context.configure(
+                connection=connection, target_metadata=target_metadata
+            )
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        connectable.dispose()
 
 
 if context.is_offline_mode():

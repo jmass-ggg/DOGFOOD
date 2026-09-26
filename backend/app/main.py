@@ -1,11 +1,15 @@
 """FastAPI application factory and health endpoint."""
 
+from contextlib import asynccontextmanager
+import logging
+
 from fastapi import APIRouter, Depends, FastAPI, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.database import get_db_session
+from app.core.database import engine, get_db_session
 
 # Health check router
 router = APIRouter()
@@ -22,22 +26,27 @@ async def health_check(db: AsyncSession = Depends(get_db_session)):
         dict: Health status including service name and database connectivity
     """
     # Test database connectivity with SELECT 1
-    database_status = "disconnected"
     try:
         await db.execute(text("SELECT 1"))
-        database_status = "connected"
-    except Exception:
-        # Gracefully handle database connection failures
-        pass
-    
-    # Determine overall status based on database connectivity
-    overall_status = "ok" if database_status == "connected" else "unhealthy"
-    
+    except Exception as exc:
+        logging.getLogger("dogfood.health").warning("Database health check failed: %s", type(exc).__name__)
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={
+            "status": "unhealthy",
+            "service": "dogfood-api",
+            "database": "disconnected",
+        })
+
     return {
-        "status": overall_status,
+        "status": "ok",
         "service": "dogfood-api",
-        "database": database_status
+        "database": "connected"
     }
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -56,7 +65,8 @@ def create_app() -> FastAPI:
     # Create FastAPI app
     app = FastAPI(
         title=settings.app_name,
-        version="1.0.0"
+        version="1.0.0",
+        lifespan=lifespan,
     )
     
     # Install middleware
@@ -68,9 +78,15 @@ def create_app() -> FastAPI:
         ApplicationError,
         application_error_handler,
         generic_exception_handler,
+        http_exception_handler,
+        validation_exception_handler,
     )
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException
     app.add_exception_handler(ApplicationError, application_error_handler)
     app.add_exception_handler(Exception, generic_exception_handler)
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
     
     # Include routers
     app.include_router(router)

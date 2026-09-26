@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.hypothesis/
+__pycache__/
+*.pyc
+tests/

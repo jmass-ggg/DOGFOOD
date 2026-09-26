@@ -21,7 +21,7 @@ def create_engine(database_url: str) -> AsyncEngine:
     Create async SQLAlchemy engine for PostgreSQL.
     
     Args:
-        database_url: PostgreSQL connection string (must use postgresql+asyncpg://)
+        database_url: PostgreSQL connection string using postgresql+psycopg://
     
     Returns:
         Configured AsyncEngine instance
@@ -64,19 +64,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     
     Provides a database session with proper lifecycle management:
     - Yields a valid session for the request
-    - Commits on success
-    - Rolls back on exception
-    - Always closes the session
+    - Closes the session and rolls back any uncommitted transaction
+    - Callers explicitly commit completed write operations
     
     Yields:
         AsyncSession: Database session for the request
     """
     async with session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+        yield session

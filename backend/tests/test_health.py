@@ -71,8 +71,7 @@ async def test_health_check_with_disconnected_database():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/health")
         
-        # Verify response - still returns 200 but with unhealthy status
-        assert response.status_code == 200
+        assert response.status_code == 503
         data = response.json()
         
         assert data["status"] == "unhealthy"

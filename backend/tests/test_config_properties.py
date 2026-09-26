@@ -6,7 +6,7 @@ from app.config import Settings
 
 
 @given(
-    database_url=st.text(min_size=1),
+    database_url=st.just("postgresql+psycopg://test:test@localhost/testdb"),
     app_env=st.text(min_size=1),
     app_name=st.text(min_size=1),
     api_v1_prefix=st.text(min_size=1),

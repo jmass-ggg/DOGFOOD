@@ -45,8 +45,7 @@ async def test_property_health_endpoint_response(database_connected: bool):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/health")
         
-        # Verify response status code is always 200
-        assert response.status_code == 200
+        assert response.status_code == (200 if database_connected else 503)
         
         # Parse response JSON
         data = response.json()

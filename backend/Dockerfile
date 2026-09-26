@@ -4,22 +4,14 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy dependency files
+# Copy application code and dependency definition
 COPY pyproject.toml ./
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e .
-
-# Copy application code
 COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
+
+RUN pip install --no-cache-dir . && useradd --system --uid 10001 dogfood
+USER dogfood
 
 # Expose port 8000 for FastAPI
 EXPOSE 8000
