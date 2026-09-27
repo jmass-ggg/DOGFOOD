@@ -1,89 +1,82 @@
-"""Authentication service functions for password hashing and JWT token management."""
+"""Password hashing and identity-only access credentials."""
 
 from datetime import datetime, timedelta, timezone
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-from jose import jwt
+from secrets import token_urlsafe
+from uuid import UUID
+
+from argon2 import PasswordHasher, Type
+from argon2.exceptions import InvalidHashError, VerificationError
+from jose import JWTError, jwt
+
 from app.config import get_settings
 
-
-# Initialize Argon2 password hasher
-_ph = PasswordHasher()
+_ph = PasswordHasher(type=Type.ID)
+# One hash per worker, then the same verification path as an existing account.
+# This reduces timing differences; it does not promise constant HTTP latency.
+DUMMY_PASSWORD_HASH = _ph.hash(token_urlsafe(32))
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using Argon2.
-    
-    Args:
-        password: Plain text password to hash
-        
-    Returns:
-        Argon2 password hash
-    """
     return _ph.hash(password)
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
-    """Verify a password against an Argon2 hash.
-    
-    Args:
-        plain_password: Plain text password to verify
-        password_hash: Stored Argon2 hash
-        
-    Returns:
-        True if password matches, False otherwise
-    """
     try:
-        _ph.verify(password_hash, plain_password)
-        return True
-    except VerifyMismatchError:
+        return _ph.verify(password_hash, plain_password)
+    except (VerificationError, InvalidHashError):
         return False
 
 
-def create_access_token(user_id: str) -> str:
-    """Create a basic JWT access token for a user.
-    
-    NOTE: This is the integration point for the advanced security layer.
-    Refresh tokens, token families, and invalidation are NOT implemented here.
-    
-    Args:
-        user_id: User ID to encode in token
-        
-    Returns:
-        JWT access token string
-    """
+def create_access_token(user_id: str, auth_version: int = 1) -> str:
+    """Callers issuing user credentials must supply the loaded auth_version."""
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.jwt_access_token_expire_minutes
-    )
-    
-    to_encode = {
-        "sub": user_id,
-        "exp": expire
+    if type(auth_version) is not int or auth_version < 1:
+        raise ValueError("Invalid auth version")
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(UUID(user_id)),
+        "exp": now + timedelta(minutes=settings.jwt_access_token_expire_minutes),
+        "iat": now,
+        "type": "access",
+        "auth_version": auth_version,
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
     }
-    
     return jwt.encode(
-        to_encode,
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm
+        payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
     )
 
 
 def decode_access_token(token: str) -> dict:
-    """Decode and verify a JWT access token.
-    
-    Args:
-        token: JWT token string
-        
-    Returns:
-        Decoded token payload
-        
-    Raises:
-        jose.JWTError: If token is invalid or expired
-    """
     settings = get_settings()
-    return jwt.decode(
-        token,
-        settings.jwt_secret_key,
-        algorithms=[settings.jwt_algorithm]
-    )
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={
+                "require_exp": True,
+                "require_sub": True,
+                "require_iat": True,
+                "require_iss": True,
+                "require_aud": True,
+            },
+        )
+        now = datetime.now(timezone.utc).timestamp()
+        if (
+            payload.get("type") != "access"
+            or type(payload.get("auth_version")) is not int
+            or payload["auth_version"] < 1
+            or type(payload.get("exp")) is not int
+            or type(payload.get("iat")) is not int
+            or payload["exp"] <= now
+            or payload["iat"] > now
+            or payload["exp"] <= payload["iat"]
+        ):
+            raise JWTError("Invalid access claims")
+        UUID(payload["sub"])
+        return payload
+    except (ValueError, TypeError, AttributeError, KeyError) as exc:
+        raise JWTError("Invalid access claims") from exc

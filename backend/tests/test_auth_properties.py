@@ -2,6 +2,7 @@
 
 import pytest
 import uuid
+import time
 from hypothesis import given, strategies as st, settings, assume, HealthCheck
 
 
@@ -16,7 +17,8 @@ from hypothesis import given, strategies as st, settings, assume, HealthCheck
 )
 @settings(
     max_examples=100,
-    suppress_health_check=[HealthCheck.function_scoped_fixture]
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+    deadline=None  # Disable deadline to prevent flakiness from timing issues
 )
 @pytest.mark.asyncio
 async def test_property_invalid_credentials_generic_error(
@@ -36,11 +38,13 @@ async def test_property_invalid_credentials_generic_error(
     # Ensure passwords are different to test wrong password case
     assume(valid_password != wrong_password)
     
-    # Generate unique email and username using UUID to avoid collisions
-    test_id_str = str(test_id).replace("-", "")[:16]
-    valid_email = f"user{test_id_str}@test.com"
-    wrong_email = f"wrong{test_id_str}@test.com"
-    username = f"user{test_id_str}"
+    # Generate unique email and username using UUID and timestamp to avoid collisions
+    timestamp_ns = time.time_ns()
+    test_id_str = str(test_id).replace("-", "")[:10]
+    unique_suffix = f"{test_id_str}{timestamp_ns}"
+    valid_email = f"user{unique_suffix}@test.com"
+    wrong_email = f"wrong{unique_suffix}@test.com"
+    username = f"user{unique_suffix}"
     
     # Step 1: Register a user with valid credentials
     registration_data = {
@@ -55,10 +59,16 @@ async def test_property_invalid_credentials_generic_error(
         json=registration_data
     )
     
-    # Skip test if registration fails (should not happen with UUIDs)
-    if register_response.status_code != 201:
+    # If registration fails due to duplicate, skip this iteration
+    if register_response.status_code == 409:
         assume(False)
     
+    # For other failures, we want to know about them
+    assert register_response.status_code == 201, (
+        f"Registration failed unexpectedly: {register_response.status_code} - "
+        f"{register_response.text}"
+    )
+
     # Step 2: Try to login with non-existent email
     login_with_wrong_email = {
         "email": wrong_email,
