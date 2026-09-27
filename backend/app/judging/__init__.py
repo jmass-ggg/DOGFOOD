@@ -1,0 +1,1 @@
+"""DogFood judging persistence domain."""

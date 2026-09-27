@@ -1,0 +1,1 @@
+"""DogFood results persistence domain."""

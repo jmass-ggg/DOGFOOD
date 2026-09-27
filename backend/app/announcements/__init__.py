@@ -1,0 +1,1 @@
+"""DogFood announcements persistence domain."""

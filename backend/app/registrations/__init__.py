@@ -1,0 +1,1 @@
+"""DogFood registrations persistence domain."""

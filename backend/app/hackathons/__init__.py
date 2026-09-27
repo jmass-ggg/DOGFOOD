@@ -1,0 +1,1 @@
+"""DogFood hackathons persistence domain."""

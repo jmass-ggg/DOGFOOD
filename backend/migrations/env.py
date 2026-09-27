@@ -24,6 +24,14 @@ config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"
 # Add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata
 
+
+def include_name(name, type_, parent_names):
+    """Autogenerate owns only the dedicated DogFood schema."""
+    if type_ == "schema":
+        return name == "dogfood"
+    return True
+
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
@@ -48,6 +56,9 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_schemas=True,
+        include_name=include_name,
+        compare_server_default=True,
     )
 
     with context.begin_transaction():
@@ -70,7 +81,11 @@ def run_migrations_online() -> None:
     try:
         with connectable.connect() as connection:
             context.configure(
-                connection=connection, target_metadata=target_metadata
+                connection=connection,
+                target_metadata=target_metadata,
+                include_schemas=True,
+                include_name=include_name,
+                compare_server_default=True,
             )
 
             with context.begin_transaction():

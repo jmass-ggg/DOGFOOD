@@ -1,0 +1,1 @@
+"""DogFood teams persistence domain."""

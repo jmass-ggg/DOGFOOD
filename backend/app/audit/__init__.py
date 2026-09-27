@@ -1,0 +1,1 @@
+"""DogFood audit persistence domain."""
