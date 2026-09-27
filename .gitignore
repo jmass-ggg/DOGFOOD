@@ -82,4 +82,5 @@ Thumbs.db
 
 .codex
 .kiro
-docs
+docs/ARCHITECTURE.md
+docs/dogfood-domain.md
