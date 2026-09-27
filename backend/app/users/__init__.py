@@ -1,0 +1,1 @@
+"""DogFood users persistence domain."""

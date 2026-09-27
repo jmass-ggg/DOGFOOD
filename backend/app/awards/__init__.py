@@ -1,0 +1,1 @@
+"""DogFood awards persistence domain."""

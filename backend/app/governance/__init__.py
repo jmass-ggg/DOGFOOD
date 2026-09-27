@@ -1,0 +1,1 @@
+"""DogFood governance persistence domain."""

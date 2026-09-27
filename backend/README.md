@@ -198,3 +198,69 @@ If you encounter import errors:
 ## License
 
 Internal project for DogFood hackathon platform.
+
+## T2 persistence
+
+The 33 typed model mappings live in the domain `models.py` files. Import
+`app.models` to register every table; the shared `DeclarativeBase` lives in
+`app/core/model_base.py`. All tables explicitly use the `dogfood` schema.
+Bounded vocabularies remain `TEXT` plus named checks, not native enums.
+
+`0001_dogfood_v1` installs the frozen schema using explicit Alembic operations
+and versioned PostgreSQL function/trigger DDL. It does not load the reference
+SQL or import live application models. Use migrations for database setup;
+`Base.metadata.create_all()` does not install the 11 functions/49 triggers.
+The development downgrade removes the revision's objects and their data; use
+it only on disposable databases. It does not use `DROP SCHEMA ... CASCADE`.
+
+From `backend/`, with a dedicated database URL in `DATABASE_URL`:
+
+```bash
+python -m alembic heads
+python -m alembic upgrade head
+python -m alembic current
+python -m alembic check
+```
+
+Autogenerate inspects only `dogfood` and compares server defaults. It cannot
+prove function/trigger or CHECK-constraint parity; the catalog tests below
+cover those separately. The two deferred ownership/leadership FKs retain
+their frozen semantics. `use_alter` on cyclic metadata references controls
+DDL ordering only, not constraint deferrability.
+
+### PostgreSQL integration tests
+
+Use PostgreSQL 16+ and separate disposable databases. T1 retains its existing
+`TEST_DATABASE_URL` contract (database name `testdb`). T2 uses a separate
+`T2_DATABASE_URL` with database name prefixed `dogfood_t2_`; its fixture applies
+the migration to an empty database or checks an existing T2 revision. Tests
+roll back their fixtures, including commits inside ORM sessions. No database
+is dropped or reset by the test suite.
+
+1. Create an empty reference database, a separate empty `dogfood_t2_*`
+   migration database, and an empty `dogfood_t2_*` metadata-test database
+   with PostgreSQL tooling.
+2. From the repository root run the unchanged frozen verifier:
+   `SCHEMA_TEST_DATABASE_URL='postgresql://…/reference' python verify_schema.py`.
+3. From `backend/` run:
+
+```bash
+T2_DATABASE_URL='postgresql+psycopg://…/dogfood_t2_tests' \
+T2_REFERENCE_DATABASE_URL='postgresql+psycopg://…/reference' \
+T2_METADATA_DATABASE_URL='postgresql+psycopg://…/dogfood_t2_metadata' \
+python -m pytest tests/persistence
+```
+
+Without `T2_DATABASE_URL`, PostgreSQL persistence tests are explicitly skipped.
+Without the reference URL, catalog parity tests are skipped. Without the
+metadata URL, metadata parity is skipped. A verification run must set all three
+and report zero skipped tests. Metadata DDL runs in a rolled-back transaction
+and leaves its dedicated database empty. Catalog comparison covers
+columns, defaults, generated expressions, exact constraints, indexes, partial
+predicates, function definitions, trigger definitions and native enums.
+
+Persistence tests do not establish API authorization, privacy projections,
+business transaction correctness, concurrent race behavior or production
+readiness. Project child relationships are explicit read-only navigation with
+`lazy="raise"`; load them explicitly (for example with `selectinload`) and make
+writes via the mapped child entities. No cascade or workflow is implied.
