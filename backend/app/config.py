@@ -14,18 +14,15 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         hide_input_in_errors=True,
+        extra="ignore",
     )
     
     # Application
     app_env: str = "development"
     app_name: str = "dogfood-api"
-    api_v1_prefix: str = "/api/v1"
     
     # Database
     database_url: str
-    
-    # Frontend
-    frontend_url: str = "http://localhost:3000"
     
     # Logging
     log_level: str = "INFO"
@@ -41,12 +38,6 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must use postgresql+psycopg")
         return value
     
-    @property
-    def is_development(self) -> bool:
-        """Check if application is running in development mode."""
-        return self.app_env == "development"
-
-
 def get_settings() -> Settings:
     """Get settings instance (lazy loading)."""
     return Settings()

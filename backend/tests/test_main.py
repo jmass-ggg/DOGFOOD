@@ -61,11 +61,8 @@ def test_router_inclusion():
     """
     test_app = create_app()
     
-    # Check that routes are registered
-    routes = [route.path for route in test_app.routes]
-    
-    # Health endpoint should be present
-    assert "/health" in routes
+    # Check the public API contract rather than FastAPI's internal route classes.
+    assert "/health" in test_app.openapi()["paths"]
 
 
 @pytest.mark.asyncio

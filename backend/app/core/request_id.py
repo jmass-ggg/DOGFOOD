@@ -3,6 +3,7 @@
 import uuid
 import logging
 import time
+import re
 from contextvars import ContextVar
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -24,7 +25,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         # Extract request ID from header or generate new one
         request_id = request.headers.get("X-Request-ID")
-        if not request_id or len(request_id) > 128 or not request_id.isascii() or not request_id.isprintable():
+        if not request_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id):
             request_id = str(uuid.uuid4())
         
         # Store in context variable for access during request processing

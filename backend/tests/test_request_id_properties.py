@@ -11,7 +11,7 @@ from app.core.request_id import RequestIDMiddleware
     request_id=st.text(
         min_size=1,
         max_size=100,
-        alphabet=st.characters(min_codepoint=33, max_codepoint=126)  # Printable ASCII
+        alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-",
     )
 )
 def test_property_request_id_propagation(request_id: str):

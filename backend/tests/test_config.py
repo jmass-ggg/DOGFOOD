@@ -34,8 +34,6 @@ def test_default_values_applied():
     # Check default values
     assert settings.app_env == "development"
     assert settings.app_name == "dogfood-api"
-    assert settings.api_v1_prefix == "/api/v1"
-    assert settings.frontend_url == "http://localhost:3000"
     assert settings.log_level == "INFO"
 
 
@@ -45,31 +43,12 @@ def test_custom_values_override_defaults():
         database_url="postgresql+psycopg://custom:custom@localhost/custom",
         app_env="production",
         app_name="custom-api",
-        api_v1_prefix="/api/v2",
-        frontend_url="https://example.com",
         log_level="DEBUG"
     )
     
     assert settings.app_env == "production"
     assert settings.app_name == "custom-api"
-    assert settings.api_v1_prefix == "/api/v2"
-    assert settings.frontend_url == "https://example.com"
     assert settings.log_level == "DEBUG"
-
-
-def test_is_development_property():
-    """Test the is_development property."""
-    dev_settings = Settings(
-        database_url="postgresql+psycopg://test:test@localhost/test",
-        app_env="development"
-    )
-    assert dev_settings.is_development is True
-    
-    prod_settings = Settings(
-        database_url="postgresql+psycopg://test:test@localhost/test",
-        app_env="production"
-    )
-    assert prod_settings.is_development is False
 
 
 def test_env_example_contains_no_secrets():
@@ -98,5 +77,4 @@ def test_env_example_contains_no_secrets():
     assert "DATABASE_URL" in content
     assert "APP_ENV" in content
     assert "APP_NAME" in content
-    assert "FRONTEND_URL" in content
     assert "LOG_LEVEL" in content

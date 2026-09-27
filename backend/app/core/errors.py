@@ -90,8 +90,8 @@ async def generic_exception_handler(
     """Handle unhandled exceptions with safe error responses.
     
     Catches any unhandled exception and returns a generic error response
-    that doesn't expose internal details. The full exception is logged
-    server-side for debugging.
+    that doesn't expose internal details. Logs only the exception type;
+    exception messages can contain credentials or request data.
     
     Args:
         request: The FastAPI request object
@@ -100,7 +100,10 @@ async def generic_exception_handler(
     Returns:
         JSONResponse with generic error information and 500 status
     """
-    logging.getLogger("dogfood.errors").error("Unhandled exception type: %s", type(exc).__name__)
+    logging.getLogger("dogfood.errors").error(
+        "Unhandled exception type: %s", type(exc).__name__,
+        extra={"request_id": request.scope.get("request_id") or get_request_id() or "N/A"},
+    )
     return error_response(request, status.HTTP_500_INTERNAL_SERVER_ERROR,
                           "INTERNAL_ERROR", "An unexpected error occurred")
 

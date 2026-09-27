@@ -150,3 +150,19 @@ def test_context_isolation_between_requests():
     assert response1.headers["X-Request-ID"] == id1
     assert response2.headers["X-Request-ID"] == id2
     assert response3.headers["X-Request-ID"] == id3
+
+
+def test_unsafe_request_id_is_replaced():
+    app = FastAPI()
+    app.add_middleware(RequestIDMiddleware)
+
+    @app.get("/test")
+    async def test_route():
+        return {"request_id": get_request_id()}
+
+    client = TestClient(app)
+    for supplied in (" ", "Bearer secret", "abc.def.ghi"):
+        response = client.get("/test", headers={"X-Request-ID": supplied})
+        generated = response.headers["X-Request-ID"]
+        assert uuid.UUID(generated)
+        assert generated == response.json()["request_id"]

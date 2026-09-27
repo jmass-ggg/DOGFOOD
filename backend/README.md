@@ -33,7 +33,6 @@ cp .env.example .env
 
 Edit `.env` and set:
 - `DATABASE_URL`: Your `postgresql+psycopg://` connection string. Replace any older `postgresql+asyncpg://` value.
-- `FRONTEND_URL`: Frontend application URL (default: http://localhost:3000)
 - `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 ### 3. Set Up PostgreSQL
@@ -50,7 +49,7 @@ CREATE DATABASE dogfood;
 
 ### 4. Run Database Migrations
 
-Initialize Alembic and run migrations:
+Run the available Alembic migrations:
 ```bash
 alembic upgrade head
 ```
@@ -105,11 +104,6 @@ Tests ignore your application `DATABASE_URL` and use `TEST_DATABASE_URL` when se
 Execute all tests:
 ```bash
 pytest
-```
-
-Run with coverage report:
-```bash
-pytest --cov=app --cov-report=html
 ```
 
 Run specific test file:

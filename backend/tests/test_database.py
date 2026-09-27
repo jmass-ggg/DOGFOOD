@@ -50,38 +50,18 @@ async def test_dependency_provides_valid_session():
     
     Requirements: 3.3 - Provide FastAPI dependency for database sessions
     
-    Note: This test verifies the dependency structure. It will attempt to
-    create a session but may fail on actual database operations, which is
-    expected in unit tests without a live database.
+    This verifies the request-scoped session type without requiring a query.
     """
     session_generator = get_db_session()
     
     # The dependency is an async generator
-    session = None
     try:
         session = await anext(session_generator)
-        
-        # Verify we got an AsyncSession
         assert isinstance(session, AsyncSession)
         assert session.is_active
-        
-        # Test that it's properly configured
-        assert session.expire_on_commit is False
-        
-    except Exception as e:
-        # Database connection might fail in unit tests
-        # As long as we got a valid session object, the test passes
-        if session is not None:
-            assert isinstance(session, AsyncSession)
-        else:
-            # Connection failed before we got a session - that's acceptable
-            pytest.skip(f"Database connection not available: {e}")
+        assert session.sync_session.expire_on_commit is False
     finally:
-        # Cleanup - close the generator
-        try:
-            await session_generator.aclose()
-        except:
-            pass
+        await session_generator.aclose()
 
 
 def test_base_exists():

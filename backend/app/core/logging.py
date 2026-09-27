@@ -23,7 +23,8 @@ class RequestIDFilter(logging.Filter):
         Returns:
             Always True to include the record in output
         """
-        record.request_id = get_request_id() or "N/A"
+        if not hasattr(record, "request_id"):
+            record.request_id = get_request_id() or "N/A"
         return True
 
 
