@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     
     # Logging
     log_level: str = "INFO"
+    
+    # JWT Authentication
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
 
     @field_validator("database_url")
     @classmethod

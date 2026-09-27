@@ -91,6 +91,14 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(router)
     
+    # Include auth router
+    from app.auth.router import router as auth_router
+    app.include_router(auth_router, prefix="/api/v1")
+    
+    # Include public router
+    from app.public.router import router as public_router
+    app.include_router(public_router, prefix="/api/v1")
+    
     return app
 
 
