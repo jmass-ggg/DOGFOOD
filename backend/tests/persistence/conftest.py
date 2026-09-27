@@ -60,7 +60,7 @@ def persistence_engine():
                     text("SELECT version_num FROM public.alembic_version")
                 ).scalar_one()
                 assert (
-                    revision == "0001_dogfood_v1"
+                    revision == "0002_auth_sessions"
                 ), "Expected a database at the T2 migration head"
         subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],

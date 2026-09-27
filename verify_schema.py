@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the proposed schema on a disposable, empty PostgreSQL 16+ database.
+"""Verify the current schema (T2 baseline plus approved T3 sessions) on a disposable, empty PostgreSQL 16+ database.
 
 Usage: SCHEMA_TEST_DATABASE_URL='postgresql://.../dedicated_empty_database' \
        python verify_schema.py
@@ -63,7 +63,11 @@ def main():
         tables = c.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname='dogfood'"
         ).fetchall()
-        ok("33 tables after failed reinstall", len(tables) == 33)
+        ok(
+            "33 original T2 tables after failed reinstall",
+            len([r for r in tables if r[0] != "auth_sessions"]) == 33,
+        )
+        ok("34 current tables", len(tables) == 34)
         names = {r[0] for r in tables}
         ok(
             "platform announcements only",
@@ -108,7 +112,7 @@ def main():
             )
         constraints = c.execute(
             """SELECT conname,contype,condeferrable,condeferred,confdeltype
-          FROM pg_constraint WHERE connamespace='dogfood'::regnamespace"""
+          FROM pg_constraint WHERE connamespace='dogfood'::regnamespace AND conrelid <> 'dogfood.auth_sessions'::regclass"""
         ).fetchall()
         fks = [x for x in constraints if x[1] == "f"]
         ok("92 explicit FKs", len(fks) == 92)
@@ -124,14 +128,14 @@ def main():
         ok(
             "49 user triggers",
             c.execute(
-                "SELECT count(*) FROM pg_trigger WHERE tgrelid IN (SELECT oid FROM pg_class WHERE relnamespace='dogfood'::regnamespace) AND NOT tgisinternal"
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid IN (SELECT oid FROM pg_class WHERE relnamespace='dogfood'::regnamespace) AND NOT tgisinternal AND tgrelid <> 'dogfood.auth_sessions'::regclass"
             ).fetchone()[0]
             == 49,
         )
         ok(
             "311 dictionary columns",
             c.execute(
-                "SELECT count(*) FROM information_schema.columns WHERE table_schema='dogfood'"
+                "SELECT count(*) FROM information_schema.columns WHERE table_schema='dogfood' AND table_name <> 'auth_sessions'"
             ).fetchone()[0]
             == 311,
         )
@@ -168,6 +172,61 @@ def main():
             owner, replacement, participant, participant2, judge = [
                 user() for _ in range(5)
             ]
+            auth_session = one(
+                "INSERT INTO auth_sessions(user_id,auth_version,expires_at) VALUES (%s,1,clock_timestamp()+interval '1 day') RETURNING id",
+                (owner,),
+            )
+            ok(
+                "session starts at generation zero",
+                one("SELECT generation FROM auth_sessions WHERE id=%s", (auth_session,))
+                == 0,
+            )
+            reject(
+                "session requires positive auth_version",
+                "INSERT INTO auth_sessions(user_id,auth_version,expires_at) VALUES (%s,0,clock_timestamp()+interval '1 day')",
+                (owner,),
+            )
+            reject(
+                "session generation nonnegative",
+                "UPDATE auth_sessions SET generation=-1 WHERE id=%s",
+                (auth_session,),
+            )
+            reject(
+                "session expiry after creation",
+                "INSERT INTO auth_sessions(user_id,auth_version,expires_at) VALUES (%s,1,clock_timestamp()-interval '1 day')",
+                (owner,),
+            )
+            reject(
+                "session owner immutable",
+                "UPDATE auth_sessions SET user_id=%s WHERE id=%s",
+                (replacement, auth_session),
+            )
+            reject(
+                "session requires existing user",
+                "INSERT INTO auth_sessions(user_id,auth_version,expires_at) VALUES (%s,1,clock_timestamp()+interval '1 day')",
+                (uuid4(),),
+                ("23503",),
+            )
+            run(
+                "UPDATE auth_sessions SET generation=generation+1 WHERE id=%s",
+                (auth_session,),
+            )
+            ok(
+                "session rotation persisted",
+                one("SELECT generation FROM auth_sessions WHERE id=%s", (auth_session,))
+                == 1,
+            )
+            run(
+                "UPDATE auth_sessions SET revoked_at=clock_timestamp() WHERE id=%s",
+                (auth_session,),
+            )
+            ok(
+                "session revocation persisted",
+                one(
+                    "SELECT revoked_at IS NOT NULL FROM auth_sessions WHERE id=%s",
+                    (auth_session,),
+                ),
+            )
             terms = one(
                 "INSERT INTO platform_terms_versions(version_label,body,created_by_user_id) VALUES ('v1','terms',%s) RETURNING id",
                 (owner,),

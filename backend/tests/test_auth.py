@@ -899,6 +899,7 @@ async def test_login_disabled_user_cannot_login(test_client_with_db, test_db_ses
     """Test disabled user cannot login.
     
     Requirements: 4.3 - Return unauthorized error for disabled users
+    Security: Error message should be generic to avoid revealing account state
     """
     from datetime import datetime, timezone
     from sqlalchemy import select
@@ -941,13 +942,16 @@ async def test_login_disabled_user_cannot_login(test_client_with_db, test_db_ses
     # Should return 401 Unauthorized
     assert response.status_code == 401
     
-    # Error message should indicate account is disabled
+    # Error message should be generic (not revealing disabled status)
+    # This prevents attackers from enumerating valid emails and passwords
     data = response.json()
     error_message = data.get("detail") or (data.get("error", {}).get("message", ""))
     error_message_lower = error_message.lower()
     
-    # Should mention disabled status
-    assert "disabled" in error_message_lower or "unauthorized" in error_message_lower
+    # Should use generic authentication error (not reveal "disabled")
+    assert "incorrect" in error_message_lower or "unauthorized" in error_message_lower
+    # Should NOT specifically mention "disabled" to avoid information disclosure
+    assert "disabled" not in error_message_lower
 
 
 @pytest.mark.asyncio
