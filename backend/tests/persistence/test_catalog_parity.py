@@ -91,18 +91,18 @@ def test_frozen_structural_counts(catalogs):
             )
         } == {
             "schemas": 1,
-            "tables": 33,
-            "columns": 311,
-            "indexes": 81,
+            "tables": 34,
+            "columns": 319,
+            "indexes": 83,
             "functions": 11,
-            "triggers": 49,
+            "triggers": 51,
             "enums": 0,
         }
         assert Counter(row[2] for row in database["constraints"]) == {
-            "p": 33,
+            "p": 34,
             "u": 27,
-            "c": 97,
-            "f": 92,
+            "c": 100,
+            "f": 93,
         }
 
 
@@ -154,3 +154,14 @@ def test_model_metadata_catalog_parity(catalogs):
                 transaction.rollback()
     finally:
         engine.dispose()
+
+
+def test_original_t2_baseline_preserved(catalogs):
+    for database in catalogs:
+        assert len([r for r in database["tables"] if r[0] != "auth_sessions"]) == 33
+        assert len([r for r in database["columns"] if r[0] != "auth_sessions"]) == 311
+        assert Counter(
+            r[2] for r in database["constraints"] if r[0] != "auth_sessions"
+        ) == {"p": 33, "u": 27, "c": 97, "f": 92}
+        assert len([r for r in database["indexes"] if r[0] != "auth_sessions"]) == 81
+        assert len([r for r in database["triggers"] if r[0] != "auth_sessions"]) == 49

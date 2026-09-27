@@ -50,7 +50,7 @@ def check_deferred(db):
 
 
 def test_all_models_registered_and_platform_scope(persistence_engine):
-    assert len(Base.registry.mappers) == len(Base.metadata.tables) == 33
+    assert len(Base.registry.mappers) == len(Base.metadata.tables) == 34
     inspector = inspect(persistence_engine)
     assert set(inspector.get_table_names(schema="dogfood")) == {
         t.name for t in Base.metadata.tables.values()

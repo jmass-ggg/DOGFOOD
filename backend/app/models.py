@@ -1,10 +1,11 @@
-"""Import registry for all 33 DogFood models and the shared Base.
+"""Import registry for all 34 DogFood models and the shared Base.
 
 Importing this module is sufficient for Alembic discovery. Domain model modules
 import only core.model_base, so registration never creates circular imports.
 """
 
 from app.core.model_base import Base
+from app.auth.models import AuthSession
 from app.users.models import User
 from app.users.models import PlatformTermsVersion
 from app.hackathons.models import Hackathon
@@ -41,6 +42,7 @@ from app.audit.models import AuditEvent
 
 __all__ = [
     "Base",
+    "AuthSession",
     "User",
     "PlatformTermsVersion",
     "Hackathon",

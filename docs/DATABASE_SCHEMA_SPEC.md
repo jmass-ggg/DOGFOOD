@@ -1,5 +1,13 @@
 # DogFood V1 database schema specification
 
+> **Current owner-approved T3 extension:** `dogfood.auth_sessions` is added by
+> `0002_auth_sessions` after the original `0001_dogfood_v1` baseline.
+> Current schema: **34 tables**. The original 33-table T2 specification and
+> verification history below are retained unchanged. See the T3 appendix for
+> the additive physical definition and current counts. The prior “proposed”
+> labels describe historical T2 review status; the owner subsequently froze T2.
+
+
 Status: **proposed physical schema, ready for owner review**. The five owner decisions below are authoritative V1 behavior. Physical choices marked **PROPOSED IMPLEMENTATION DETAIL** are review proposals, not claims of prior approval. This document and `dogfood_schema_v2.sql` specify the same schema. No SQLAlchemy models, Alembic domain migrations or application functionality are part of this change.
 
 ## Sources, precedence and reconciliation
@@ -1627,3 +1635,108 @@ For a repeat run, use a new empty disposable database and psycopg 3. The harness
 Not claimed by this validation: multi-connection race/load coverage, API authorization/privacy tests, runtime role provisioning, or verification on the eventual deployment collation/version. These are explicit later acceptance gates, not untested claims of production security. No T1 application code, SQLAlchemy models or Alembic migrations changed.
 
 **SCHEMA READY FOR OWNER REVIEW**
+
+## T3 owner-approved authentication session extension
+
+Approved after the T2 freeze, with exactly one table and one additive migration.
+No existing domain column, constraint, index, function or trigger is changed.
+
+| Object | Original T2 | Current T3 |
+|---|---:|---:|
+| Tables | 33 | 34 |
+| Columns | 311 | 319 |
+| PK | 33 | 34 |
+| UNIQUE | 27 | 27 |
+| CHECK | 97 | 100 |
+| Foreign keys | 92 | 93 |
+| Indexes | 81 | 83 |
+| Native ENUMs | 0 | 0 |
+| Functions | 11 | 11 |
+| User triggers | 49 | 51 |
+
+### `dogfood.auth_sessions` physical dictionary
+
+| Column | Type | Nullable | Default | Purpose |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Session identity, PK |
+| user_id | uuid | no | none | Owning users.id, RESTRICT, NOT DEFERRABLE |
+| auth_version | integer | no | none | Account version captured at login |
+| generation | bigint | no | 0 | Current refresh generation |
+| expires_at | timestamptz | no | none | Absolute session/refresh deadline |
+| revoked_at | timestamptz | yes | none | Session revocation time |
+| created_at | timestamptz | no | statement_timestamp() | Creation time |
+| updated_at | timestamptz | no | statement_timestamp() | Trigger-maintained update time |
+
+No generated columns, arrays, JSONB, credential digests, raw credentials,
+role claims or additional UNIQUE/partial indexes. No native ENUM.
+The exact additive DDL follows; this same extension is appended within the
+reference SQL installation transaction.
+
+```sql
+-- Owner-approved T3 extension; the original 33 domain tables are unchanged.
+CREATE TABLE dogfood.auth_sessions (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    auth_version integer NOT NULL,
+    generation bigint NOT NULL DEFAULT 0,
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz NULL,
+    created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+    CONSTRAINT pk_auth_sessions PRIMARY KEY (id),
+    CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES dogfood.users (id) ON DELETE RESTRICT NOT DEFERRABLE,
+    CONSTRAINT ck_auth_sessions_auth_version CHECK (auth_version >= 1),
+    CONSTRAINT ck_auth_sessions_generation CHECK (generation >= 0),
+    CONSTRAINT ck_auth_sessions_expiry CHECK (expires_at > created_at)
+);
+CREATE INDEX ix_auth_sessions_user ON dogfood.auth_sessions (user_id);
+CREATE TRIGGER tr_touch_updated_at BEFORE UPDATE ON dogfood.auth_sessions FOR EACH ROW EXECUTE FUNCTION dogfood.touch_updated_at();
+CREATE TRIGGER tr_identity BEFORE UPDATE ON dogfood.auth_sessions FOR EACH ROW EXECUTE FUNCTION dogfood.guard_identity('id','user_id','auth_version','expires_at','created_at');
+
+```
+
+### Authentication transaction contract
+
+Refresh credentials are signed HS256 JWTs with required issuer/audience,
+UUID sub/sid, integer iat/exp, type=refresh, positive auth_version and bounded
+nonnegative generation. Access credentials use type=access and the same
+user/session binding. No mutable hackathon authorization is encoded.
+The signing key stays in validated environment configuration. The database
+stores no credential, so a table read alone cannot mint or replay one.
+
+Login verifies Argon2id, then locks/reloads the user before creating the session.
+All session mutations lock the user first, then the session. Refresh validates
+the signature/type before touching state, locks rows, rechecks account/version,
+session expiry/revocation and signed expiry using database wall time after locks,
+then increments generation and commits before returning credentials.
+Default absolute lifetime is 14 days (configurable 1–90), never extended by
+refresh; access defaults to 30 minutes (configurable 1–60) and additionally
+requires an active unexpired session on every authenticated request.
+
+A valid signed refresh credential with a generation different from the stored
+one revokes the session and commits that revocation before returning 401.
+This is strict replay handling: duplicate concurrent refreshes result in one
+rotation and one replay rejection, and the resulting session is revoked.
+Clients must serialize refresh attempts and reauthenticate after uncertain
+refresh delivery; there is no retry grace period or token-history table.
+Invalid signatures/claims do not revoke a session.
+
+POST /api/v1/auth/logout revokes only the authenticated session and preserves
+users.auth_version. POST /api/v1/auth/logout-all locks the user, increments
+auth_version and revokes that user's sessions in the same transaction.
+Other users are unaffected. Session access tokens fail after revocation;
+credentials with an older account version fail independently of session state.
+Already-authenticated in-flight requests cannot be recalled.
+
+Refresh is a JSON-body bearer credential, not a query parameter or implicit
+cookie. No cookie authentication/CSRF policy is introduced. Login/refresh
+responses use no-store/no-cache headers; application logs omit bodies and tokens.
+Future client storage and transport deployment remain separate work.
+
+### Verification history
+
+T2's original verifier passed **119/119** on 33 tables. The current verifier
+retains those baseline checks (with original counts scoped to the original
+objects) and adds **9 session checks**, for **128 checks**. Catalog parity tests
+compare the full 34-table migration/reference schema, and separately assert the
+original T2 counts excluding auth_sessions. No failing domain invariant is skipped.

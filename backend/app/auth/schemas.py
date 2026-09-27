@@ -50,6 +50,12 @@ class UserResponse(BaseModel):
 class LoginResponse(BaseModel):
     """Response schema for successful login."""
 
-    access_token: str
+    access_token: str = Field(repr=False)
+    refresh_token: str = Field(repr=False)
     token_type: str = "bearer"
     user: UserResponse
+
+
+class RefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    refresh_token: str = Field(min_length=1, max_length=4096, repr=False)

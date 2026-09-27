@@ -20,6 +20,7 @@ from app.auth.schemas import UserRegisterRequest
 from app.config import get_settings, Settings
 from app.main import app
 from app.users.models import User
+from app.auth.models import AuthSession
 
 
 async def register(client, **overrides):
@@ -176,7 +177,7 @@ async def test_logout_revokes_all_prior_access_credentials(test_client_with_db):
         for _ in range(2)
     ]
     response = await test_client_with_db.post(
-        "/api/v1/auth/logout", headers={"Authorization": f"Bearer {tokens[0]}"}
+        "/api/v1/auth/logout-all", headers={"Authorization": f"Bearer {tokens[0]}"}
     )
     assert response.status_code == 204
     for token in tokens:
@@ -187,7 +188,9 @@ async def test_logout_revokes_all_prior_access_credentials(test_client_with_db):
         ).status_code == 401
     login = await test_client_with_db.post("/api/v1/auth/login", json=payload)
     assert decode_access_token(login.json()["access_token"])["auth_version"] == 2
-    assert (await test_client_with_db.post("/api/v1/auth/logout")).status_code == 401
+    assert (
+        await test_client_with_db.post("/api/v1/auth/logout-all")
+    ).status_code == 401
 
 
 def test_argon2id_and_corrupt_hash():
@@ -242,7 +245,8 @@ async def test_registration_really_commits_and_logout_persists(test_engine):
             token = login.json()["access_token"]
             assert (
                 await client.post(
-                    "/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"}
+                    "/api/v1/auth/logout-all",
+                    headers={"Authorization": f"Bearer {token}"},
                 )
             ).status_code == 204
             async with test_engine.connect() as connection:
@@ -260,4 +264,7 @@ async def test_registration_really_commits_and_logout_persists(test_engine):
     finally:
         if created_id:
             async with test_engine.begin() as connection:
+                await connection.execute(
+                    delete(AuthSession).where(AuthSession.user_id == created_id)
+                )
                 await connection.execute(delete(User).where(User.id == created_id))

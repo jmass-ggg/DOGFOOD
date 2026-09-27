@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(min_length=32, repr=False)
     jwt_algorithm: Literal["HS256"] = "HS256"
     jwt_access_token_expire_minutes: int = Field(default=30, ge=1, le=60)
+    jwt_refresh_token_expire_days: int = Field(default=14, ge=1, le=90)
     jwt_issuer: str = "dogfood-api"
     jwt_audience: str = "dogfood-api"
 

@@ -264,3 +264,36 @@ business transaction correctness, concurrent race behavior or production
 readiness. Project child relationships are explicit read-only navigation with
 `lazy="raise"`; load them explicitly (for example with `selectinload`) and make
 writes via the mapped child entities. No cascade or workflow is implied.
+
+
+## T3 approved sessions (current schema)
+
+T2's historical baseline remains 33 domain tables at `0001_dogfood_v1`.
+Current head is `0002_auth_sessions`: **34 tables**, including the single approved
+`dogfood.auth_sessions` extension. Apply `alembic upgrade head` before starting
+this version. All models (including AuthSession) are registered by `app.models`.
+The updated root SQL is the clean-install reference for the current schema;
+`verify_schema.py` retains T2 checks and adds session checks (128 total).
+
+- `POST /api/v1/auth/login`: access_token, refresh_token, token_type, safe user.
+- `POST /api/v1/auth/refresh`: JSON `{ "refresh_token": "..." }`; same response
+  shape, new refresh generation. Absolute refresh expiry is not extended.
+- `POST /api/v1/auth/logout`: bearer access required; revoke this session only.
+- `POST /api/v1/auth/logout-all`: bearer access required; revoke the user's
+  sessions and increment auth_version atomically.
+
+JWT_REFRESH_TOKEN_EXPIRE_DAYS defaults to 14; the signing key must be generated
+securely. Tokens without a persisted session ID from the prior implementation
+require re-login. Access authentication reloads user and session state.
+Clients must serialize refresh requests: an old signed refresh credential is
+replay evidence and revokes the session, even if the first refresh succeeded
+but its response was lost. There is no retry grace window. Refresh credentials
+are sent in JSON, never URLs or automatic cookies; response caching is disabled.
+There is no raw token storage, device tracking, rate limiting or lockout feature.
+
+`tests/test_auth_sessions.py` includes an actual two-connection PostgreSQL race
+using a database-held row-lock barrier. The metadata/parity fixtures use the
+existing T2_* environment variable names but now verify the current 34-table
+schema and separately retain baseline 33-table assertions. A development
+downgrade to 0001 removes auth sessions and requires users to log in again;
+unrelated domain data is retained.

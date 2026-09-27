@@ -1,8 +1,8 @@
-"""Authentication endpoints; account-wide logout uses existing auth_version."""
+"""Authentication endpoints with persisted rotating sessions."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
@@ -13,9 +13,9 @@ from app.auth.service import (
     DUMMY_PASSWORD_HASH,
     hash_password,
     verify_password,
-    create_access_token,
 )
-from app.auth.dependencies import get_current_user, invalid_credentials
+from app.auth.dependencies import get_current_user, get_auth_context, AuthContext
+from app.auth import sessions
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -76,10 +76,7 @@ async def login(
         )
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
-    return schemas.LoginResponse(
-        access_token=create_access_token(str(user.id), user.auth_version),
-        user=schemas.UserResponse.model_validate(user),
-    )
+    return await sessions.open_session(db, user)
 
 
 @router.get("/me", response_model=schemas.UserResponse)
@@ -90,23 +87,39 @@ async def get_current_user_info(
     return schemas.UserResponse.model_validate(current_user)
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(
-    current_user: User = Depends(get_current_user),
+@router.post("/refresh", response_model=schemas.LoginResponse)
+async def refresh(
+    request: schemas.RefreshRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Invalidate ALL previously issued credentials for this account, not one session."""
-    result = await db.execute(
-        update(User)
-        .where(
-            User.id == current_user.id,
-            User.auth_version == current_user.auth_version,
-            User.disabled_at.is_(None),
-        )
-        .values(auth_version=User.auth_version + 1)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return await sessions.rotate(db, request.refresh_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Revoke this session only, including its previously issued access tokens."""
+    await sessions.revoke(
+        db, context.user.id, context.session.id, context.user.auth_version
     )
-    if result.rowcount != 1:
-        await db.rollback()
-        raise invalid_credentials()
-    await db.commit()
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all(
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db_session),
+):
+    await sessions.revoke(
+        db,
+        context.user.id,
+        context.session.id,
+        context.user.auth_version,
+        all_sessions=True,
+    )
     return Response(status_code=204, headers={"Cache-Control": "no-store"})

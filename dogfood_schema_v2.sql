@@ -1024,4 +1024,24 @@ CREATE TRIGGER tr_chain_guard BEFORE INSERT ON dogfood.result_publications FOR E
 CREATE TRIGGER tr_children_guard BEFORE INSERT ON dogfood.result_entries FOR EACH ROW EXECUTE FUNCTION dogfood.guard_publication_children();
 CREATE TRIGGER tr_children_guard BEFORE INSERT ON dogfood.result_awards FOR EACH ROW EXECUTE FUNCTION dogfood.guard_publication_children();
 
+-- Owner-approved T3 extension; the original 33 domain tables are unchanged.
+CREATE TABLE dogfood.auth_sessions (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    auth_version integer NOT NULL,
+    generation bigint NOT NULL DEFAULT 0,
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz NULL,
+    created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+    CONSTRAINT pk_auth_sessions PRIMARY KEY (id),
+    CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES dogfood.users (id) ON DELETE RESTRICT NOT DEFERRABLE,
+    CONSTRAINT ck_auth_sessions_auth_version CHECK (auth_version >= 1),
+    CONSTRAINT ck_auth_sessions_generation CHECK (generation >= 0),
+    CONSTRAINT ck_auth_sessions_expiry CHECK (expires_at > created_at)
+);
+CREATE INDEX ix_auth_sessions_user ON dogfood.auth_sessions (user_id);
+CREATE TRIGGER tr_touch_updated_at BEFORE UPDATE ON dogfood.auth_sessions FOR EACH ROW EXECUTE FUNCTION dogfood.touch_updated_at();
+CREATE TRIGGER tr_identity BEFORE UPDATE ON dogfood.auth_sessions FOR EACH ROW EXECUTE FUNCTION dogfood.guard_identity('id','user_id','auth_version','expires_at','created_at');
+
 COMMIT;
